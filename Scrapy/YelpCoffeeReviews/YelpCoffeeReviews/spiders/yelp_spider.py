@@ -2,113 +2,82 @@ import sys
 import scrapy
 import pickle
 
-from YelpCoffeeReviews.items import YelpcoffeereviewsItem
+from YelpCoffeeReviews.items import YelpBusinessItem
 
-# from scrapy.spider import Spider
-# from scrapy.selector import Selector
-# from yelpspider.items import YelpspiderItem
+'''
+This spider grabs the urls for all cafes/cofee shops in a city by scraping Yelp. It requires a list of all the neighborhoods in a city which also must be scraped from yelp. That list can be collected by navigating to a yelp search page in the target city which has the option to filter by neighborhoods. Open that page in the scrapy command line then use:
+
+save_variable = response.xpath('.//label[@class = "place radio-check"]/input/@value').extract()
+
+to grab all of the nieghborhoods. They should be in the form like IL:Chicago::West_Lawn or NY:New_York:Brooklyn:Gowanus.
+
+Then save it with:
+
+import pickle
+pickle.dump(save_variable,open("city_locations.pkl","wb"))
+
+
+The output can be used to feed the second spider (yelp_business_spider... sorry about the names) which then goes to all of these found URLs and grabs reviews + business data. Currently I load a pickle file of saved NYC locations, but that should be replaced with pulling in a simple csv.
+
+Before the output can be used in yelp_business_spider it first must be run throught scraped_names_to_urls.py
+
+'''
 
 class YelpSpider(scrapy.Spider):
 	name = "yelp"
 	allowed_domains = ["yelp.com"]
     # start_urls = ["http://www.yelp.com/search?find_loc=New+York,+NY,+USA&start=0&cflt=coffee"]
 	location_strings = pickle.load( open( "saved_locations.p", "rb" ) )
+	location_split = [strings.split(':') for strings in location_strings]
 	start_urls = []
-	for location in location_strings:
-		start_urls.append("http://www.yelp.com/search?start=0&cflt=coffee&l=p:" + location)
+	for location in location_split:
 
-	start_urls = start_urls[0:2]
+		# Note, modified this to change NY at the end to location[0]. confirm that that works
+		start_urls.append("http://www.yelp.com/search?cflt=coffee&find_loc=" + location[3] +",+" +location[2]+ ",+"+location[0]+"&start=0")
+		start_urls.append("http://www.yelp.com/search?cflt=cafes&find_loc=" + location[3] +",+" +location[2]+ ",+"+location[0]+"&start=0")
 
-	total_results = response.xpath("//span[@class='pagination-results-window']/text()").extract()
-	# for i in range(1,500):
-	# for i in range(1,2):	
- #        	start_urls.append("http://www.yelp.com/search?find_loc=New+York,+NY,+USA&start="+str(i*10)+"&cflt=coffee")
 
+
+
+	start_urls = start_urls
  	
 
 	def parse(self, response):
-		item = YelpcoffeereviewsItem()
+		total_results = response.xpath("//span[@class='pagination-results-window']/text()").extract()
+		total_results = total_results[0].split()
+		total_results = int(total_results[-1])
+
+
+		
+		i=0
+		while (i <  total_results) and (i < 1000):
+			
+			url = response.request.url
+			url = url[:-1] + str(i)
+			print(url)
+			yield scrapy.Request(url, callback=self.parse_dir_contents)
+			i = i+10
+
+	def parse_dir_contents(self, response):
+		item = YelpBusinessItem()
 		item["biz_url"] = response.xpath("//span[@class='indexed-biz-name']/a[@class='biz-name']/@href").extract()
+		item["biz_name"] = response.xpath("//span[@class='indexed-biz-name']/a[@class='biz-name']/text()").extract()
+
+
+		'''If i decide to scrape more cleanly and pul in one business at a time instead of list of 10 then use:
+		#results = response.xpath("//span[@class='indexed-biz-name']/a[@class='biz-name']")
+		for result in results:
+		item["biz_url"] = results[1].xpath("@href").extract()
+		#results[1].xpath("text()").extract() should grab the name but only gets first word right now so would take some cleaning up
+
+		results[1].xpath("@href").extract()
+
+		review_count = response.xpath("//span[@class='review-count rating-qualifier']/text()").extract()
+		review_count_list = [] '''
+
+
+
 		yield item
 
-#  temp_value = response.xpath("//label[@class='place radio-check']/input/@value").extract()
-
-		# sel = scrapy.selector(response)
-		# sites = sel.xpath('//*[@id="super-container"]/div[3]/div[3]/div[1]/div/div[1]/ul/li')
-		# items = []
 
 
-		# "//span[@class='indexed-biz-name']/a[@class='biz-name']/@href"
-
-		# for site in sites:
-		# 	item = YelpcoffeereviewsItem()
-		# 	name=site.xpath('div/div[1]/div[2]/h3/span/a/text()').extract()
-		# 	if len(name)>0:
-		# 		item['name'] = name[0]
-		# 	else:
-		# 		item['name'] = ''
-
-		# 	url=site.xpath('div/div[1]/div[2]/h3/span/a/@href').extract()
-		# 	if len(url)>0:
-		# 		item['url'] = u'http://www.yelp.com'+url[0]
-		# 	else:
-		# 		item['url'] = ''
-
-		# 	address_l1=site.xpath('div/div[2]/address/text()[1]').extract()
-		# 	if len(address_l1)>0:
-		# 		item['address_l1'] = address_l1[0].replace('\n','').strip()
-		# 	else:
-		# 		item['address_l1'] = ''
-
-		# 	address_l2=site.xpath('div/div[2]/address/text()[2]').extract()
-	 #                if len(address_l2)>0:
-	 #                	item['address_l2'] = address_l2[0].replace('\n','').strip()	
-		# 	else:
-		# 		item['address_l2'] = ''
-
-		# 	phone=site.xpath('div/div[2]/span[2]/text()').extract()
-		# 	if len(phone)>0:
-		# 		item['phone']=phone[0].replace('\n','').strip()
-		# 	else:
-		# 		phone = ''
-
-		# 	item['category'] = site.xpath('div/div[1]/div[2]/div[2]/span[2]/a/text()').extract()
-
-		# 	rating=site.xpath('div/div[1]/div[2]/div[1]/div/i/@title').extract()
-		# 	if len(rating)>0:
-		# 		item['rating'] = rating[0].split(' ')[0]
-		# 	else:
-		# 		item['rating'] = ''
-
-		# 	price_rating=site.xpath('div/div[1]/div[2]/div[2]/span[1]/span/text()').extract()
-		# 	if len(price_rating)>0:
-		# 		item['price_rating'] = unicode(str(len(price_rating[0]))) 
-		# 	else:
-		# 		item['price_rating'] = ''
-
-		# 	thumbUrl = site.xpath('div/div[1]/div[1]/div/a/img/@src').extract()
-		# 	if len(thumbUrl) > 0:
-		# 		item['thumbUrl'] = u'http:'+thumbUrl[0]
-		# 	else:
-		# 		item['thumbUrl'] = ''
-
-		# 	fav_comment_user = site.xpath('div/div[3]/div[1]/div/a/img/@alt').extract()
-		# 	if len(fav_comment_user)>0:
-		# 		item['fav_comment_user']=fav_comment_user[0] 
-		# 	else:
-		# 		item['fav_comment_user']=''
-
-		# 	fav_comment_content = site.xpath('div/div[3]/div[2]/p/text()').extract()
-		# 	if len(fav_comment_content)>0:
-		# 		item['fav_comment_content']=fav_comment_content[0]
-		# 	else:
-		# 		item['fav_comment_content']=''
-
-		# 	fav_comment_user_face = site.xpath('div/div[3]/div[1]/div/a/img/@src').extract()
-		# 	if len(fav_comment_user_face)>0:
-		# 		item['fav_comment_user_face'] = u'http:'+fav_comment_user_face[0]
-		# 	else:
-		# 		item['fav_comment_user_face'] = ''
-
-		# 	items.append(item)
-		# return items
